@@ -1,3 +1,6 @@
+import sys
+sys.path.append('.')
+
 import spacy
 from utilities import librarian
 from utilities.dictionary import (
@@ -6,6 +9,14 @@ from utilities.dictionary import (
 	sum_nested_counters,
 	top_n
 	)
+
+"""
+Experimental script using Spacy to track what kinds of tokens
+appear in particular syntactic contexts, e.g. when the syntactic
+ancestors of a token are [NOUN, VERB], or when it is a verba and 
+has a DOBJ dependency relationship to its left child. Idea is to 
+make better-educated guesses about what terms are interchangeable.
+"""
 
 def syntactic_subtree(token, doc):
 	return doc[token.left_edge.i:token.right_edge.i+1]
@@ -75,7 +86,7 @@ if __name__ == '__main__':
 	import random
 	nlp = spacy.load("en_core_web_sm")
 	print('loaded')
-	df = librarian.load_dataframe(truncate=250)
+	df = librarian.load_dataframe(truncate=25)
 	df['transcript'] = df['transcript'].apply(lambda x: librarian.clean_transcript(x))
 	texts = list(df['transcript'])
 
