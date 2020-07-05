@@ -16,11 +16,8 @@ def replace_mask_token_in_order(doc, mask_token, source_tokens):
 	result = []
 	deck = itertools.cycle(source_tokens)
 	for token in doc:
-		if token == mask_token:
-			replacement = deck.__next__().upper()
-			result.append(replacement)
-		else:
-			result.append(token)
+		next_token = deck.__next__() if token == mask_token else token
+		result.append(next_token)
 	return result
 
 # VERB CASE

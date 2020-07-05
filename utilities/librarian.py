@@ -50,6 +50,7 @@ def clean(text: str):
 	text = text.replace('!', '.')
 	text = text.replace(':', '.')
 	text = text.replace('.','. ')
+	text = text.replace('—',' ')
 	text = handle_parentheticals(text)
 	return text
 

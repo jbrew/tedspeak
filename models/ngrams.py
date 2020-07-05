@@ -85,12 +85,6 @@ class NgramModel(object):
 		print('bigrams')
 		self.bigram_counts = ngram_counts_for_lines(self.lines, 2)
 		self.bigram_model = bigram_model_from_counts(self.bigram_counts)
-
-		print('backwards bigram')
-		self.backwards_bigram_model = self.build_collocates_from_mask([True, 'X'], 1)
-
-		#self.bigram_model_alt = self.build_collocates_from_mask(['X', True], 1)
-		#self.trigram_model = self.build_collocates_from_mask(['X','X',True], 1)
 		
 		self.collocates = {} # TODO: key on masks
 
@@ -119,6 +113,20 @@ class NgramModel(object):
 			likelihood *= next_tok_likelihood
 		return likelihood
 
+	def build_collocates_from_mask(self, mask, min_count_threshold=100):
+		d = {}
+		target_start = mask.index('X')
+		target_end = len(mask) - mask[::-1].index('X')
+		for line in self.lines:
+			ngrams = ngrams_for_line(line, len(mask))
+			for ngram in ngrams:
+				tokens = ngram.split()
+				key = " ".join(tokens[target_start:target_end])
+				for mask_value, token in zip(mask, tokens):
+					if mask_value is True and self.unigram_counts[token] >= min_count_threshold:
+						enter_nested_item(d, key, token, 1)
+		return d
+
 	def ngrams_by_unigram_and_bigram_surprise(self, n, min_count_threshold, min_doc_freq_threshold):
 		counts = ngram_counts_for_lines(self.lines, n)
 		rates = normalize(counts)
@@ -135,19 +143,6 @@ class NgramModel(object):
 
 		return by_unigram_surprise, by_bigram_surprise
 
-	def build_collocates_from_mask(self, mask, min_count_threshold=100):
-		d = {}
-		target_start = mask.index('X')
-		target_end = len(mask) - mask[::-1].index('X')
-		for line in self.lines:
-			ngrams = ngrams_for_line(line, len(mask))
-			for ngram in ngrams:
-				tokens = ngram.split()
-				key = " ".join(tokens[target_start:target_end])
-				for mask_value, token in zip(mask, tokens):
-					if mask_value is True and self.unigram_counts[token] >= min_count_threshold:
-						enter_nested_item(d, key, token, 1)
-		return d
 
 
 
