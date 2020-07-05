@@ -1,6 +1,13 @@
 import sys
 sys.path.append('.')
-from models.ngrams import ngram_counts_for_line, ngram_counts_for_lines
+from models.ngrams import (
+	ngrams_for_line,
+	ngram_counts_for_line,
+	ngram_counts_for_lines
+)
+from utilities.dictionary import(
+	top_n, bottom_n
+)
 
 MASK_TOKEN = '____'
 
@@ -43,4 +50,11 @@ def mask_for_skipgram(skipgram):
 def entries_matching_skipgram(d, skipgram):
 	mask = mask_for_skipgram(skipgram)
 	return {k: v for k, v in d.items() if apply_mask_to_ngram(mask, k) == skipgram}
+
+def show_slot_entropies(line, skipgram_entropies, skipgram_tree):
+	words = line.split()
+	ngrams = ngrams_for_line(line, 3)
+	for ngram in ngrams:
+		skipgram = apply_mask_to_ngram([True, False, True], ngram)
+		print(skipgram, skipgram_entropies[skipgram], [x[0].split()[1] for x in top_n(skipgram_tree[skipgram], 10)])
 

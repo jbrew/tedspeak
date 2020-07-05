@@ -2,9 +2,14 @@ import re
 import math
 import pandas as pd
 from collections import Counter
-from typing import List, Sequence
 
-from models.ngrams import NgramModel
+from models.ngrams import (
+	NgramModel,
+	ngram_counts_for_lines,
+	ngrams_for_line,
+	flatten_list,
+	tf_idf
+)
 
 from models.skipgrams import (
 	skipgram_counts_for_lines,
@@ -15,66 +20,17 @@ from models.skipgrams import (
 from utilities.dictionary import (
 	sum_counters,
 	keywise_quotients,
-	normalize
+	normalize,
+	keywise_rates_of_condition
 )
 from utilities.command_line import *
 from utilities import librarian
-
-### LINE OPERATIONS ###
-
-def get_laugh_lines(lines: List[str]):
-	return [start for start, end in zip(lines[:-1], lines[1:]) if end == '<Laughter>']
-
-def get_applause_lines(lines: List[str]):
-	return [start for start, end in zip(lines[:-1], lines[1:]) if end == '<Applause>']
-
-def lines_for_tag(df, tag):
-	return df.loc[tag in df['tags']]
-
-def flatten_list(list_of_lists):
-	return [item for sublist in list_of_lists for item in sublist]
+from resources.stopwords import stopwords
+from resources.tag_counts import tag_counts
 
 ##############################################
 
 ### PROCEDURES ###
-
-def laugh_rate_analysis(df, n, count_threshold, num_to_print):
-
-	# find ngrams in all lines
-	df['all_ngrams'] = df['lines'].apply(lambda x: ngram_counts_for_lines(x, n))
-
-	# find ngrams in laugh lines
-	df['laugh_ngrams'] = df['laugh_lines'].apply(lambda x: ngram_counts_for_lines(x, n))
-
-	laugh_rates = condition_rates_by_ngram( condition=df['laugh_ngrams'],
-											overall=df['all_ngrams'],
-											count_threshold=count_threshold)
-
-	print('\nTOP LAUGH RATES (min {} occurrences):'.format(count_threshold))
-	for word, quotient in top_n(laugh_rates, num_to_print):
-		print(word + '\t' + str(quotient))
-
-	print('\nLOWEST NONZERO LAUGH RATES (min {} occurrences):'.format(count_threshold))
-	for word, quotient in bottom_n(laugh_rates, num_to_print):
-		print(word + '\t' + str(quotient))
-
-
-def show_slot_entropies(line, skipgram_entropies, skipgram_tree):
-	words = line.split()
-	ngrams = ngrams_for_line(line, 3)
-	for ngram in ngrams:
-		skipgram = apply_mask_to_ngram([True, False, True], ngram)
-		print(skipgram, skipgram_entropies[skipgram], [x[0].split()[1] for x in top_n(skipgram_tree[skipgram], 10)])
-
-def tag_analysis(df):
-	tags = get_tags('tag_counts.txt')
-	chosen_tag = user_choose_from_list(tags[:20])
-	line_lists = [lines for i, lines in enumerate(df['lines']) if chosen_tag in df['tags'][i]]
-	lines_for_tag = []
-	for line_list in line_lists:
-		lines_for_tag.extend(line_lists)
-
-	print(len(lines_for_tag))
 
 def surprise_analysis(ng_model, n, min_count_threshold, min_doc_freq_threshold):
 	by_unigram_surprise, by_bigram_surprise = ng_model.ngrams_by_unigram_and_bigram_surprise(n, min_count_threshold, min_doc_freq_threshold)
@@ -97,19 +53,142 @@ def collocates_analysis(ng_model):
 	relative_collocates = {k: keywise_quotients(v, ng_model.unigram_model) for k, v in normalized_collocates.items()}
 	explore_nested_dict(relative_collocates, 25)
 
+def laugh_rate_analysis(df, n, count_threshold, num_to_print):
+
+	laugh_ngram_counts = sum_counters(df['laugh_lines'].apply(lambda x: ngram_counts_for_lines(x, n)))
+	overall_ngram_counts = sum_counters(df['lines'].apply(lambda x: ngram_counts_for_lines(x, n)))
+	laugh_rates = keywise_rates_of_condition( condition_counts=laugh_ngram_counts,
+												overall_counts=overall_ngram_counts,
+												count_threshold=count_threshold
+											)
+
+	print('\nLOWEST NONZERO LAUGH RATES (min {} occurrences):'.format(count_threshold))
+	for word, quotient in bottom_n(laugh_rates, num_to_print):
+		print(word + '\t' + str(quotient))
+
+	print('\nTOP LAUGH RATES (min {} occurrences):'.format(count_threshold))
+	for word, quotient in top_n(laugh_rates, num_to_print):
+		print(word + '\t' + str(quotient))
+
+def tag_tfidfs(df, n, min_doc_freq_threshold):
+	from pprint import pprint
+
+	tags = [tag for tag, count in top_n(tag_counts, 50)[10:]]
+	total_docs = len(tags)	
+	ngram_counts_by_tag = {}
+
+	for tag in tags:
+		print(tag)
+		line_lists = [lines for i, lines in enumerate(df['lines']) if tag in df['tags'][i]]
+		ngram_counts_for_tag = sum_counters([ngram_counts_for_lines(line_list, n) for line_list in line_lists])
+		ngram_counts_by_tag[tag] = ngram_counts_for_tag
+	
+	doc_frequencies = sum_counters([{k: 1 for k in counter} for counter in ngram_counts_by_tag.values()])
+
+	tfidfs = {tag: {k: tf * -math.log(doc_frequencies[k]/total_docs)
+				for k, tf in term_frequencies.items()
+				if doc_frequencies[k] >= min_doc_freq_threshold} for tag, term_frequencies in ngram_counts_by_tag.items()}
+
+	for k, v in tfidfs.items():
+		print(k)
+		pprint(top_n(v, 10))
+		print()
+
+
+BLANK_TOKEN = '___'
+
+def mask_content_words(tokens):
+	return [mask_if_content_word(token) for token in tokens]
+
+def mask_if_content_word(token):
+	return token if token in stopwords else BLANK_TOKEN
+
+def mask_stopwords(tokens):
+	return [mask_if_stopword(token) for token in tokens]
+
+def mask_if_stopword(token):
+	return token if token not in stopwords else BLANK_TOKEN
+
+def fill_content_words(masked, ng_model):
+	tokens = masked.split()
+	# TODO
+
+def mask_tokens_if_in_set(tokens, set_to_mask):
+	return [mask_if_in_set(token, set_to_mask) for token in tokens]
+
+def mask_if_in_set(token, set_to_mask):
+	return BLANK_TOKEN if token in set_to_mask else token
+
+def mask_all_lines_if_in_set(lines, set_to_mask):
+	return [mask_tokens_if_in_set(ngrams_for_line(line, 1), set_to_mask) for line in lines]
+
+
+def stopword_analysis(df):
+	lines = flatten_list(df['lines'])
+	
+	for line in lines[:100]:
+		ngrams = ngrams_for_line(line, 5)
+		for ngram in ngrams[:5]:
+			print(ngram)
+			print(" ".join(mask_content_words(ngram.split())))
+			print()
+
+def top_n_keys(d, n):
+	return [k for k, v in top_n(d, n)]
+
+def mask_tfidfs(df):
+	lines_by_title = dict(zip(df['title'], df['lines']))
+	term_frequencies, doc_frequencies, tfidfs = tf_idf(df['lines'], ngram_size=1, min_doc_freq_threshold=2)
+	tfidfs_by_title = dict(zip(df['title'], tfidfs))
+
+	n = 100
+	import random
+	title = random.choice(df['title'])
+	tfidfs = tfidfs_by_title[title]
+	top_keywords = set(top_n_keys(tfidfs, 100)) - stopwords
+	for line in lines_by_title[title]:
+		tfidf_masked_line = ' '.join(mask_tokens_if_in_set(line.lower().split(), top_keywords))
+		stopword_masked_line = ' '.join(mask_content_words(line.lower().split()))
+		print(line)
+		print(tfidf_masked_line)
+		print(stopword_masked_line)
+		print()
+
 
 if __name__ == '__main__':
-	df = librarian.load_dataframe(cutoff=250)	# Optional: clip dataframe for testing
+	from pprint import pprint
+	df = librarian.load_dataframe(truncate=250)	# Optional: clip dataframe for testing
+	ng_model = NgramModel(df)
 
-	# FIND LINES PRECEDING LAUGHTER AND APPLAUSE
-	df['laugh_lines'] = df['lines'].apply(lambda x: get_laugh_lines(x))
-	df['applause_lines'] = df['lines'].apply(lambda x: get_applause_lines(x))
 
-	# SURPRISE MEASURES	
-	lines_by_doc = df['lines']
-	ng_model = NgramModel(lines_by_doc)
+	# print(len(ng_model.unigram_model))
+	# print(len(ng_model.bigram_model_alt))
+	# print(len(ng_model.trigram_model))
+
+	# for k, v in list(ng_model.trigram_model.items())[:100]:
+	# 	print(k)
+
+	
+	### PROCEDURES (uncomment to run)
 	#surprise_analysis(ng_model, n=6, min_count_threshold=3, min_doc_freq_threshold=5)
-	collocates_analysis(ng_model)
+	#collocates_analysis(ng_model)
+	#laugh_rate_analysis(df, 3, 20, 100)
+	#tag_tfidfs(df, n=1, min_doc_freq_threshold=15)
+
+	## TALK TFIDFS
+
+
+
+
+
+
+
+	
+
+
+
+
+
 
 
 

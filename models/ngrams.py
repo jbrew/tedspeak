@@ -16,7 +16,7 @@ OOV_PENALTY = 0.0000000000000001
 ### GET NGRAMS ###
 
 def ngrams_for_sequence(tokens, n):
-	return [' '.join(tokens[start:start+n]) for start in range(len(tokens) - n)]
+	return [' '.join(tokens[start:start+n]) for start in range(len(tokens) + 1 - n)]
 
 def split_ngrams_for_sequence(tokens, n):
 	return [tokens[start:start+n] for start in range(len(tokens) - n)]
@@ -55,9 +55,6 @@ def get_laugh_lines(lines: List[str]):
 def get_applause_lines(lines: List[str]):
 	return [start for start, end in zip(lines[:-1], lines[1:]) if end == '<Applause>']
 
-def lines_for_tag(df, tag):
-	return df.loc[tag in df['tags']]
-
 def flatten_list(list_of_lists):
 	return [item for sublist in list_of_lists for item in sublist]
 
@@ -77,17 +74,32 @@ def tf_idf(lines, ngram_size, min_doc_freq_threshold=1):
 
 class NgramModel(object):
 
-	def __init__(self, lines_by_doc):
-		self.lines_by_doc = lines_by_doc
-		self.lines = flatten_list(lines_by_doc)
+	def __init__(self, df):
+		self.lines_by_doc = df['lines']
+		self.lines = flatten_list(df['lines'])
 
+		print('unigrams')
 		self.unigram_counts = ngram_counts_for_lines(self.lines, 1)
 		self.unigram_model = normalize(self.unigram_counts)
-		
+			
+		print('bigrams')
 		self.bigram_counts = ngram_counts_for_lines(self.lines, 2)
 		self.bigram_model = bigram_model_from_counts(self.bigram_counts)
+
+		print('backwards bigram')
+		self.backwards_bigram_model = self.build_collocates_from_mask([True, 'X'], 1)
+
+		#self.bigram_model_alt = self.build_collocates_from_mask(['X', True], 1)
+		#self.trigram_model = self.build_collocates_from_mask(['X','X',True], 1)
 		
 		self.collocates = {} # TODO: key on masks
+
+	def fill_blanks(self, tokens, blank_token, window_size):
+		for i, token in enumerate(tokens):
+			if token==blank_token:
+				left_token = tokens[i-1] if i > 0 else None
+				right_token = tokens[i+1] if i < len(tokens) - 1 else None
+				token = self.fill_blank(left_context, right_context)
 
 	def unigram_likelihood(self, line):
 		likelihood = 1
@@ -123,45 +135,20 @@ class NgramModel(object):
 
 		return by_unigram_surprise, by_bigram_surprise
 
-
 	def build_collocates_from_mask(self, mask, min_count_threshold=100):
 		d = {}
-		x_index = mask.index('X')
+		target_start = mask.index('X')
+		target_end = len(mask) - mask[::-1].index('X')
 		for line in self.lines:
 			ngrams = ngrams_for_line(line, len(mask))
 			for ngram in ngrams:
 				tokens = ngram.split()
-				x_token = tokens[x_index]
+				key = " ".join(tokens[target_start:target_end])
 				for mask_value, token in zip(mask, tokens):
-					if mask_value is True and self.unigram_counts[token] > min_count_threshold:
-						enter_nested_item(d, x_token, token, 1)
+					if mask_value is True and self.unigram_counts[token] >= min_count_threshold:
+						enter_nested_item(d, key, token, 1)
 		return d
 
-
-def quotients_for_condition(condition, baseline, count_threshold=1):
-	"""
-	returns a dictionary:
-		{ngram: P(ngram|condition)/P(ngram)}
-	"""
-	summed_counts_for_base = sum_counters(baseline)
-	normalized_base = normalize(summed_counts_for_base)
-	summed_counts_for_cond = sum_counters(condition)
-	normalized_cond = normalize(summed_counts_for_cond)
-
-	above_threshold_base = {k: v for k, v in normalized_base.items()
-							if summed_counts_for_base[k] >= count_threshold}
-	
-	above_threshold_cond = {k: v for k, v in normalized_cond.items()
-							if summed_counts_for_cond[k] >= count_threshold}
-	
-	return keywise_quotients(above_threshold_cond, above_threshold_base)
-
-def condition_rates_by_ngram(condition, overall, count_threshold):
-	"""e.g. P(laugh|ngram)"""
-	summed_counts_for_cond = sum_counters(condition)
-	summed_counts_overall = sum_counters(overall)
-	above_threshold_cond = {k: v for k, v in summed_counts_for_cond.items() if summed_counts_overall[k]>count_threshold}
-	return {k: v/summed_counts_overall[k] for k, v in above_threshold_cond.items()}
 
 
 

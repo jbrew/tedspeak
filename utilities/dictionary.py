@@ -18,12 +18,26 @@ def above_threshold(d, threshold):
 def keywise_quotients(d, baseline):
 	return {k: d[k] / baseline[k] for k in d if k in baseline}
 
+def keywise_rates_of_condition(condition_counts, overall_counts, count_threshold=1):
+	"""e.g. P(laugh|ngram)"""
+	common_condition_counts = {k: v for k, v in condition_counts.items() if overall_counts[k]>=count_threshold}
+	return {k: v/overall_counts[k] for k, v in common_condition_counts.items()}
+
 def sum_counters(counters):
 	"""counters: a list of Counter objects"""
 	agg = {}
 	for counter in counters:
 		for k, v in counter.items():
 			enter_item(agg, k, v)
+	return agg
+
+def sum_nested_counters(nested_counters):
+	"""nested counters: [ {string: {string: number}}, ... ]"""
+	agg = {}
+	for counter in nested_counters:
+		for context, ng_dict in counter.items():
+			for ng, count in ng_dict.items():
+				enter_nested_item(agg, context, ng, count)
 	return agg
 
 def enter_item(d, k, value):
