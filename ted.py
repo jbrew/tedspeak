@@ -3,7 +3,7 @@ import math
 import pandas as pd
 from collections import Counter
 
-from models.ngrams import (
+from models.ngram_model import (
 	NgramModel,
 	ngram_counts_for_lines,
 )
@@ -56,7 +56,7 @@ def collocates_analysis(ng_model):
 	immediately after a given 2-gram, equivalent to a trigram model.
 	"""
 	mask = user_create_mask()
-	collocates = ng_model.build_collocates_from_mask(mask=mask, min_count_threshold=100)
+	collocates = ng_model.build_collocates_from_mask(mask=mask, min_doc_freq_threshold=5)
 	print('normalizing...')
 	normalized_collocates = {k: normalize(v) for k, v in collocates.items()}
 	print('comparing to baseline...')
@@ -84,18 +84,29 @@ def laugh_rate_analysis(df, n, count_threshold, num_to_print):
 	# for word, quotient in bottom_n(laugh_rates, num_to_print):
 	# 	print(word + '\t' + str(quotient))
 
+def masked_ngrams_analysis(ng_model):
+	from models import skipgrams
+	mask = user_create_mask()
+	skipgram_tree = skipgrams.build_skipgram_tree(mask, ng_model.lines)
+	most_uncertain_skipgrams = sorted(skipgram_tree.items(), key=lambda x: len(x[1]), reverse=True)
+	for x in most_uncertain_skipgrams[:20]:
+		print(x)
+		print()		
+
+
 
 if __name__ == '__main__':
 	from pprint import pprint
 	from utilities import librarian
-	df = librarian.load_dataframe(truncate=2500)	# Optional: clip dataframe for testing
-	ng_model = NgramModel(df)
+	df = librarian.load_dataframe(truncate=250)		# Optional: clip dataframe for testing
+	ng_model = NgramModel(df, max_ng_size=4)
 
 	### PROCEDURES (uncomment to run)
 	
-	#surprise_analysis(ng_model, n=3, min_count_threshold=3, min_doc_freq_threshold=5)
+	surprise_analysis(ng_model, n=4, min_count_threshold=3, min_doc_freq_threshold=5)
 	#collocates_analysis(ng_model)
-	laugh_rate_analysis(df, n=3, count_threshold=20, num_to_print=20)
+	#laugh_rate_analysis(df, n=3, count_threshold=20, num_to_print=20)
+	#masked_ngrams_analysis(ng_model)
 
 
 

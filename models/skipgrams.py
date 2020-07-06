@@ -1,12 +1,16 @@
 import sys
 sys.path.append('.')
-from models.ngrams import (
+
+from utilities.ngram_utils import (
 	ngrams_for_line,
 	ngram_counts_for_line,
 	ngram_counts_for_lines
 )
 from utilities.dictionary import(
-	top_n, bottom_n
+	top_n,
+	bottom_n,
+	sum_counters,
+	enter_item
 )
 
 MASK_TOKEN = '____'
